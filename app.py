@@ -38,6 +38,7 @@ STEPS = {
     "model": "Chargement du modèle d'embedding",
     "vector": "Embedding dans Chroma DB et index « vector »",
     "bm25": "Indexation « bm25 » (mots-clés, sans embedding)",
+    "hybrid": "Retriever « hybrid » (fusion des scores vector et bm25)",
     "auto_merging": "Indexation « auto_merging » (Chroma DB)",
     "recursive": "Indexation « recursive » (Chroma DB)",
     "document_summary": "Indexation « document_summary » (résumés llama3.2 + Chroma DB)",
@@ -78,7 +79,7 @@ def process_url(url, selected_model, build_all=True):
     Args:
         url: Web page URL to scrape.
         selected_model: LLM model to use.
-        build_all: Build all five retrievers now instead of on first use.
+        build_all: Build all retrievers now instead of on first use.
 
     Yields:
         (steps HTML, status message) each time a step starts or ends.
@@ -154,6 +155,15 @@ def process_url(url, selected_model, build_all=True):
     yield render_steps(progress), f"{summary}\n\nTitle: {data['title']}\n\n{data['text'][:1000]}"
 
 
+def plain_text(text):
+    """Neutralise Markdown links, images and HTML in text influenced by scraped pages.
+
+    Without this, a page could make the LLM write an image URL that leaks the chat
+    to another server as soon as it is displayed.
+    """
+    return html.escape(str(text), quote=False).replace("[", "&#91;").replace("]", "&#93;")
+
+
 def chat(user_query, retriever_name, chat_history):
     """Answer a question about the scraped pages.
 
@@ -175,10 +185,10 @@ def chat(user_query, retriever_name, chat_history):
         try:
             response, used = answer_user_query(knowledge_base, user_query, retriever_name)
             sources = "\n".join(f"- {u}" for u in source_urls(response))
-            answer = f"{response}\n\n**Retriever:** `{used}`\n\n**Sources:**\n{sources}"
+            answer = f"{plain_text(response)}\n\n**Retriever:** `{used}`\n\n**Sources:**\n{sources}"
         except Exception as e:
             logger.exception("Query failed")
-            answer = f"❌ Query failed: {e}"
+            answer = f"❌ Query failed: {plain_text(e)}"
 
     return chat_history + [
         {"role": "user", "content": user_query},
@@ -208,7 +218,7 @@ def create_gradio_interface():
                         value=config.LLM_MODEL_ID
                     )
                     build_all = gr.Checkbox(
-                        label="Construire les 5 retrievers maintenant (plus long)",
+                        label="Construire les 6 retrievers maintenant (plus long)",
                         value=True
                     )
                     process_btn = gr.Button("Process Page")

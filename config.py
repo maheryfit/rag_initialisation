@@ -24,6 +24,8 @@ CHUNK_OVERLAP = 20
 # Retriever settings
 LEAF_TOP_K = 12  # leaves searched by auto merging; higher means more merges
 SUMMARY_TOP_K = 1  # pages selected by the document summary retriever
+HYBRID_VECTOR_WEIGHT = 0.7  # BM25 gets the rest (0.3)
+HYBRID_CANDIDATES = 10  # results taken from each side before merging
 
 # Chroma DB folder
 CHROMA_DIR = "chroma_db"

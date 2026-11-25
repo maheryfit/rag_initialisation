@@ -1,10 +1,10 @@
-# Initiation au RAG : cinq retrievers LlamaIndex avec Chroma DB
+# Initiation au RAG : six retrievers LlamaIndex avec Chroma DB
 
 Ce projet est une initiation au **RAG** (*Retrieval-Augmented Generation*, ou génération augmentée par la recherche).
 Au lieu de répondre uniquement avec ses connaissances, le modèle de langage reçoit d'abord les passages les plus
 utiles trouvés dans vos documents, puis rédige sa réponse à partir de ces passages.
 
-Ici, les documents sont des **pages web scrapées**. Le projet permet d'essayer **cinq retrievers** (stratégies de
+Ici, les documents sont des **pages web scrapées**. Le projet permet d'essayer **six retrievers** (stratégies de
 recherche) sur les mêmes données et de les comparer. Les embeddings et le LLM s'exécutent **en local**, sans clé
 d'API. Une connexion Internet reste nécessaire pour scraper les pages et télécharger les modèles.
 
@@ -42,7 +42,7 @@ llama3.2 (via Ollama) rédige la réponse et le projet affiche les sources
 On peut donc utiliser `bge-m3` pour la recherche et `llama3.2` pour la génération. Si vous changez de modèle
 d'embedding, il faut réindexer les documents.
 
-## Les cinq retrievers
+## Les six retrievers
 
 | Nom | Principe | Question visée |
 |---|---|---|
@@ -51,6 +51,7 @@ d'embedding, il faut réindexer les documents.
 | `document_summary` | Choisit une page grâce à son résumé, puis renvoie tous ses blocs | Résumé ou sujet général d'une page |
 | `auto_merging` | Cherche de petits blocs et les remplace par leur parent quand assez de blocs voisins sont trouvés | Explication détaillée sur plusieurs passages |
 | `recursive` | Cherche de petits blocs enfants, puis suit leur référence vers le bloc parent | Fait précis avec son contexte |
+| `hybrid` | Combine les scores de `vector` et `bm25`, normalisés par le meilleur score de chaque côté (poids 0,7 et 0,3) | Question mêlant sens général et termes précis |
 
 La colonne « Question visée » décrit l'usage attendu, pas un résultat garanti.
 
@@ -58,7 +59,7 @@ La colonne « Question visée » décrit l'usage attendu, pas un résultat garan
 
 | Collection | Retriever | Contenu vectorisé |
 |---|---|---|
-| `chunks` | `vector` | Blocs de 512 tokens |
+| `chunks` | `vector`, `hybrid` | Blocs de 512 tokens |
 | `summaries` | `document_summary` | Résumés des pages |
 | `leaves` | `auto_merging` | Plus petits blocs de la hiérarchie 512, 256 et 128 tokens |
 | `children` | `recursive` | Blocs enfants de 128 tokens |
@@ -80,7 +81,7 @@ choisir un retriever à la main.
 ```
 ├── app.py                   # Interface web Gradio
 ├── main.py                  # Version en ligne de commande
-├── compare_retrievers.py    # Comparaison des cinq retrievers
+├── compare_retrievers.py    # Comparaison des six retrievers
 ├── config.py                # Modèles, tailles de blocs, paramètres de recherche, prompt
 ├── smoke_test.py            # Test hors ligne (modèles factices)
 ├── requirements.txt         # Dépendances
@@ -88,7 +89,7 @@ choisir un retriever à la main.
     ├── web_spider.py        # Spider Scrapy, exécuté dans un processus séparé
     ├── data_extraction.py   # Lance le spider et enregistre le JSON
     ├── data_processing.py   # Charge les JSON et prépare Chroma
-    ├── retrievers.py        # Les cinq retrievers
+    ├── retrievers.py        # Les six retrievers
     ├── router.py            # Choix du retriever
     ├── query_engine.py      # Recherche puis génération de la réponse
     └── llm_interface.py     # llama3.2 et bge-m3
@@ -135,7 +136,7 @@ Ouvrez `http://127.0.0.1:7860`.
 3. Posez votre question en français ou en anglais.
 
 La réponse indique le retriever utilisé et les pages sources des passages retrouvés. Pour comparer, posez la même
-question avec chacun des cinq retrievers.
+question avec chacun des six retrievers.
 
 ### Ligne de commande
 
@@ -172,7 +173,7 @@ ne permet pas de conclure qu'un retriever est toujours meilleur.
 python smoke_test.py
 ```
 
-Il vérifie l'extraction HTML, le filtrage des adresses locales, les cinq retrievers et le routeur avec des modèles
+Il vérifie l'extraction HTML, le filtrage des adresses locales, les six retrievers et le routeur avec des modèles
 factices. Il ne mesure ni la qualité des réponses ni celle de la recherche.
 
 ## Réglages utiles (`config.py`)
@@ -183,9 +184,11 @@ factices. Il ne mesure ni la qualité des réponses ni celle de la recherche.
 | `LOCAL_EMBEDDING_MODEL_ID` | Modèle d'embedding |
 | `EMBEDDING_DEVICE` | `cpu` par défaut, `cuda` si la mémoire GPU le permet |
 | `CHUNK_SIZES`, `CHUNK_OVERLAP` | Découpage des documents |
-| `SIMILARITY_TOP_K` | Nombre de résultats pour `vector`, `bm25` et `recursive` |
+| `SIMILARITY_TOP_K` | Nombre de résultats pour `vector`, `bm25`, `recursive` et `hybrid` |
 | `LEAF_TOP_K` | Nombre de petits blocs examinés par `auto_merging` |
 | `SUMMARY_TOP_K` | Nombre de pages choisies par `document_summary` |
+| `HYBRID_VECTOR_WEIGHT` | Poids de `vector` dans `hybrid` ; `bm25` reçoit le reste |
+| `HYBRID_CANDIDATES` | Résultats pris de chaque côté avant la fusion |
 
 ## Limites
 
@@ -198,7 +201,7 @@ factices. Il ne mesure ni la qualité des réponses ni celle de la recherche.
 - **Lenteur possible** : les embeddings sur CPU et les résumés de `document_summary` prennent du temps sur de longues
   pages.
 - **Réponses à vérifier** : un petit modèle comme `llama3.2` peut se tromper, même avec le bon passage.
-- **Usage local par un seul utilisateur** : l'application écoute sur `127.0.0.1`. Le filtre d'adresses locales ne
-  protège pas contre le *DNS rebinding*. Ne l'exposez pas à des utilisateurs non fiables.
+- **Usage local par un seul utilisateur** : l'application écoute sur `127.0.0.1`. Contre le *DNS rebinding*, le
+  contenu venant d'une adresse non publique est rejeté, mais la requête peut déjà avoir été envoyée. Ne l'exposez pas à des utilisateurs non fiables.
 
 Avant de scraper un site, vérifiez ses conditions d'utilisation, même si son `robots.txt` autorise le crawling.

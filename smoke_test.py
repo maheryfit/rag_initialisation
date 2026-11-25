@@ -6,10 +6,11 @@ from types import SimpleNamespace
 
 from llama_index.core.embeddings import MockEmbedding
 from llama_index.core.llms import MockLLM
+from llama_index.core.schema import NodeWithScore, TextNode
 from scrapy.http import HtmlResponse
 
 from modules import data_processing, query_engine, llm_interface, router
-from modules.retrievers import KnowledgeBase, RETRIEVER_NAMES
+from modules.retrievers import HybridRetriever, KnowledgeBase, RETRIEVER_NAMES
 from modules.web_spider import PageSpider, is_public_url
 
 # the spider keeps visible text, drops scripts, and refuses local or non-http URLs
@@ -20,7 +21,16 @@ assert "some text" in page["text"] and "bad()" not in page["text"], page
 for blocked in ("file:///etc/passwd", "http://127.0.0.1:11434", "http://localhost", "http://192.168.1.1", "nonsense"):
     assert not is_public_url(blocked), blocked
 
-# JSON -> documents -> Chroma -> all five retrievers -> answer
+# hybrid: weights are applied to normalised scores, and all-zero BM25 scores do not crash
+def fixed(*pairs):
+    results = [NodeWithScore(node=TextNode(id_=i, text=i), score=s) for i, s in pairs]
+    return SimpleNamespace(retrieve=lambda query: results)
+
+merged = HybridRetriever(fixed(("a", 0.8), ("b", 0.4)), fixed(("b", 10.0), ("c", 5.0)), 0.7, 3).retrieve("q")
+assert [(r.node.node_id, round(r.score, 2)) for r in merged] == [("a", 0.7), ("b", 0.65), ("c", 0.15)], merged
+assert len(HybridRetriever(fixed(("a", 0.8)), fixed(("c", 0.0)), 0.7, 5).retrieve("q")) == 2
+
+# JSON -> documents -> Chroma -> all six retrievers -> answer
 with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
     for i, topic in enumerate(["python", "cooking"]):
         text = " ".join(f"Sentence {n} talks about {topic}." for n in range(300))

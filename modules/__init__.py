@@ -5,7 +5,7 @@ This package contains the following modules:
 - data_extraction: Functions for scraping web pages into JSON
 - web_spider: Scrapy spider (run in a separate process)
 - data_processing: Loading the JSON files and preparing Chroma DB
-- retrievers: The five LlamaIndex retrievers
+- retrievers: The six LlamaIndex retrievers
 - router: LLM query router that picks a retriever
 - llm_interface: Functions for interfacing with local Ollama LLMs and HuggingFace embeddings
 - query_engine: Functions for answering questions

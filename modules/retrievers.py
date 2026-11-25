@@ -1,6 +1,7 @@
-"""The five LlamaIndex retrievers, built over the scraped documents and Chroma DB."""
+"""The six LlamaIndex retrievers, built over the scraped documents and Chroma DB."""
 
 import logging
+from functools import cached_property
 from typing import List, Optional
 
 import chromadb
@@ -13,7 +14,7 @@ from llama_index.core import (
 from llama_index.core.indices.document_summary import DocumentSummaryIndexEmbeddingRetriever
 from llama_index.core.node_parser import HierarchicalNodeParser, SentenceSplitter, get_leaf_nodes
 from llama_index.core.retrievers import AutoMergingRetriever, BaseRetriever, RecursiveRetriever
-from llama_index.core.schema import IndexNode
+from llama_index.core.schema import IndexNode, NodeWithScore, QueryBundle
 from llama_index.retrievers.bm25 import BM25Retriever
 
 from modules.data_processing import chroma_storage
@@ -21,7 +22,33 @@ import config
 
 logger = logging.getLogger(__name__)
 
-RETRIEVER_NAMES = ["vector", "document_summary", "bm25", "auto_merging", "recursive"]
+RETRIEVER_NAMES = ["vector", "document_summary", "bm25", "auto_merging", "recursive", "hybrid"]
+
+
+class HybridRetriever(BaseRetriever):
+    """Weighted average of normalised vector and BM25 scores.
+
+    Same method as "Exercise 1 - Build a Custom Hybrid Retriever" in the notebook.
+    Both retrievers here share the same nodes, so results are matched by node ID.
+    """
+
+    def __init__(self, vector: BaseRetriever, bm25: BaseRetriever, vector_weight: float, top_k: int):
+        self._weighted = [(vector, vector_weight), (bm25, 1 - vector_weight)]
+        self._top_k = top_k
+        super().__init__()
+
+    def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
+        nodes, scores = {}, {}
+        for retriever, weight in self._weighted:
+            results = retriever.retrieve(query_bundle)
+            # BM25 scores are all 0 when no word matches, hence the "or 1"
+            top = max((r.score or 0.0 for r in results), default=0.0) or 1.0
+            for result in results:
+                node_id = result.node.node_id
+                nodes[node_id] = result.node
+                scores[node_id] = scores.get(node_id, 0.0) + weight * (result.score or 0.0) / top
+        best = sorted(scores, key=scores.get, reverse=True)[: self._top_k]
+        return [NodeWithScore(node=nodes[i], score=scores[i]) for i in best]
 
 
 class KnowledgeBase:
@@ -36,6 +63,11 @@ class KnowledgeBase:
         self.client = chromadb.PersistentClient(path=chroma_dir or config.CHROMA_DIR)
         self.chunks = self._splitter(config.CHUNK_SIZES[0]).get_nodes_from_documents(documents)
         self._retrievers = {}
+
+    @cached_property
+    def _chunk_index(self) -> VectorStoreIndex:
+        """Shared by "vector" and "hybrid": rebuilding it would drop the Chroma collection."""
+        return self._vector_index(self.chunks, "chunks")
 
     def retriever(self, name: str) -> BaseRetriever:
         """Return the retriever called ``name`` (one of RETRIEVER_NAMES)."""
@@ -60,19 +92,29 @@ class KnowledgeBase:
 
     def _build_vector(self) -> BaseRetriever:
         """Semantic similarity over 512-token chunks."""
-        return self._vector_index(self.chunks, "chunks").as_retriever(
-            similarity_top_k=config.SIMILARITY_TOP_K
-        )
+        return self._chunk_index.as_retriever(similarity_top_k=config.SIMILARITY_TOP_K)
 
-    def _build_bm25(self) -> BaseRetriever:
-        """Keyword matching. Works in memory, so it uses no embeddings."""
+    def _bm25(self, top_k: int) -> BaseRetriever:
         # No stemming and no stopword list: both are language specific, and pages
         # can be French or English.
         return BM25Retriever.from_defaults(
             nodes=self.chunks,
-            similarity_top_k=min(config.SIMILARITY_TOP_K, len(self.chunks)),
+            similarity_top_k=min(top_k, len(self.chunks)),
             skip_stemming=True,
             language=[],
+        )
+
+    def _build_bm25(self) -> BaseRetriever:
+        """Keyword matching. Works in memory, so it uses no embeddings."""
+        return self._bm25(config.SIMILARITY_TOP_K)
+
+    def _build_hybrid(self) -> BaseRetriever:
+        """Semantic and keyword search together, merged by weighted scores."""
+        return HybridRetriever(
+            self._chunk_index.as_retriever(similarity_top_k=config.HYBRID_CANDIDATES),
+            self._bm25(config.HYBRID_CANDIDATES),
+            vector_weight=config.HYBRID_VECTOR_WEIGHT,
+            top_k=config.SIMILARITY_TOP_K,
         )
 
     def _build_document_summary(self) -> BaseRetriever:

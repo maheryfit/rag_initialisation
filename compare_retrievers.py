@@ -1,4 +1,4 @@
-"""Compare the five retrievers on the scraped pages. Run: python compare_retrievers.py
+"""Compare the six retrievers on the scraped pages. Run: python compare_retrievers.py
 
 A question counts as a hit when the retrieved context contains the expected passage,
 so the score measures retrieval only, not the quality of the LLM's answer.

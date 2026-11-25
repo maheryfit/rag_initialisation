@@ -21,6 +21,9 @@ ROUTES = {
                     "neighbouring passages. (explication détaillée sur plusieurs passages)",
     "recursive": "Questions about one precise fact that also needs its surrounding context. "
                  "(fait précis avec son contexte)",
+    "hybrid": "Questions mixing a general meaning with specific names or technical terms, "
+              "such as a natural language question about a named thing. "
+              "(question mêlant sens général et termes précis)",
 }
 
 
