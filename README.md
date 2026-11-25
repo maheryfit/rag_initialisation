@@ -196,6 +196,10 @@ factices. Il ne mesure ni la qualité des réponses ni celle de la recherche.
   interdisent le scraping.
 - **Scraping simple** : une seule page par URL, sans suivre les liens ni exécuter JavaScript. Tout le texte visible
   est gardé, y compris les menus et les références, ce qui ajoute du bruit à la recherche.
+- **Réindexation au redémarrage** : les retrievers sont gardés en mémoire, donc perdus à l'arrêt, même si les
+  dossiers `scraped_data/` et `chroma_db/` restent. À l'ouverture de la page, l'interface web réindexe
+  automatiquement les pages enregistrées, sans nouveau scraping. Le chat est disponible dès que `vector` est
+  construit ; les autres retrievers le sont à leur première utilisation.
 - **Réindexation complète** : toutes les pages de `scraped_data/` sont indexées, et les vecteurs sont recalculés à
   chaque traitement ou redémarrage.
 - **Lenteur possible** : les embeddings sur CPU et les résumés de `document_summary` prennent du temps sur de longues

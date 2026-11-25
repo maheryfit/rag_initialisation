@@ -51,6 +51,7 @@ STATUSES = {
     "done": ("✅", "terminé", "#16a34a"),
     "failed": ("❌", "échec", "#dc2626"),
     "skipped": ("⏭️", "à la première utilisation", "#6b7280"),
+    "reused": ("⏭️", "non nécessaire", "#6b7280"),
 }
 
 
@@ -84,12 +85,33 @@ def process_url(url, selected_model, build_all=True):
     Yields:
         (steps HTML, status message) each time a step starts or ends.
     """
-    progress = {}
     url = (url or "").strip()
     if not url:
-        yield render_steps(progress), "⚠️ Please enter a web page URL."
+        yield render_steps({}), "⚠️ Please enter a web page URL."
         return
+    yield from run_pipeline(url, selected_model, build_all)
 
+
+def reindex_saved_pages(selected_model):
+    """Re-index the saved JSON pages when the app is opened after a (re)start.
+
+    Retrievers live in memory, so they are lost when the app stops. Only "vector" is
+    built here to keep the start short; the others are built on first use.
+
+    Yields:
+        (steps HTML, status message), like process_url.
+    """
+    if state["knowledge_base"] is not None:  # another tab or a page reload
+        yield render_steps({}), "✅ Pages already indexed. Go to the Chat tab."
+    elif not load_documents():
+        yield render_steps({}), "No saved page yet. Enter a URL to start."
+    else:
+        yield from run_pipeline(None, selected_model, build_all=False)
+
+
+def run_pipeline(url, selected_model, build_all):
+    """Index the saved pages, after scraping ``url`` first unless it is None."""
+    progress = {}
     current, started = None, 0.0
 
     def start(key):
@@ -102,17 +124,21 @@ def process_url(url, selected_model, build_all=True):
         elapsed = f"{time.perf_counter() - started:.1f} s"
         progress[current] = ("done", f"{detail} ({elapsed})" if detail else elapsed)
 
+    data = None
     try:
-        yield start("scraping")
-        data = scrape_web_page(url)
-        if not data:
-            progress[current] = ("failed", "Aucune donnée récupérée")
-            yield render_steps(progress), (
-                "❌ Nothing scraped. The URL may be invalid or not public, the site's robots.txt "
-                "may disallow crawling (LinkedIn does), or the request failed. See the terminal log."
-            )
-            return
-        done(f"{len(data['text'])} caractères dans {output_path(url)}")
+        if url is None:
+            progress["scraping"] = ("reused", "Réindexation des pages déjà enregistrées en JSON")
+        else:
+            yield start("scraping")
+            data = scrape_web_page(url)
+            if not data:
+                progress[current] = ("failed", "Aucune donnée récupérée")
+                yield render_steps(progress), (
+                    "❌ Nothing scraped. The URL may be invalid or not public, the site's robots.txt "
+                    "may disallow crawling (LinkedIn does), or the request failed. See the terminal log."
+                )
+                return
+            done(f"{len(data['text'])} caractères dans {output_path(url)}")
 
         # the Chroma collections are about to be replaced, so the old retrievers are unusable
         state["knowledge_base"] = None
@@ -130,6 +156,8 @@ def process_url(url, selected_model, build_all=True):
         knowledge_base = KnowledgeBase(documents, model, create_watsonx_llm())
         knowledge_base.retriever("vector")
         done(f"{len(knowledge_base.chunks)} blocs dans {config.CHROMA_DIR}/")
+        # the chat can start now, while the other retrievers are still being built
+        state["knowledge_base"] = knowledge_base
     except Exception as e:
         logger.exception("Processing failed at step %s", current)
         progress[current] = ("failed", e)
@@ -150,9 +178,10 @@ def process_url(url, selected_model, build_all=True):
             progress[name] = ("failed", e)
             failed.append(name)
 
-    state["knowledge_base"] = knowledge_base
     summary = f"⚠️ Failed retrievers: {', '.join(failed)}" if failed else "✅ Ready. Go to the Chat tab."
-    yield render_steps(progress), f"{summary}\n\nTitle: {data['title']}\n\n{data['text'][:1000]}"
+    if data:
+        summary += f"\n\nTitle: {data['title']}\n\n{data['text'][:1000]}"
+    yield render_steps(progress), summary
 
 
 def plain_text(text):
@@ -180,7 +209,7 @@ def chat(user_query, retriever_name, chat_history):
 
     knowledge_base = state["knowledge_base"]
     if knowledge_base is None:
-        answer = "⚠️ No page indexed. Please process a URL first."
+        answer = "⚠️ No index ready. Wait for the \"vector\" step to finish, or process a URL first."
     else:
         try:
             response, used = answer_user_query(knowledge_base, user_query, retriever_name)
@@ -231,7 +260,16 @@ def create_gradio_interface():
                 fn=process_url,
                 inputs=[url_input, model_dropdown, build_all],
                 outputs=[steps_html, result_text],
-                show_progress="hidden"  # the steps panel shows the progress
+                show_progress="hidden",  # the steps panel shows the progress
+                concurrency_id="indexing"  # one indexing at a time: they share Chroma
+            )
+            # runs when the page opens; does nothing if an index is already in memory
+            demo.load(
+                fn=reindex_saved_pages,
+                inputs=[model_dropdown],
+                outputs=[steps_html, result_text],
+                show_progress="hidden",
+                concurrency_id="indexing"
             )
 
         with gr.Tab("Chat"):

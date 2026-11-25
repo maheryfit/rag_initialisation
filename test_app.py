@@ -31,7 +31,37 @@ def run(scraped, build_all=True):
         return list(app.process_url("https://example.com", "llama3.2", build_all))
 
 
+def reindex(documents):
+    fakes = {
+        "load_documents": lambda: documents,
+        "embedding_model": lambda: None,
+        "create_watsonx_llm": lambda: None,
+        "KnowledgeBase": FakeKnowledgeBase,
+        "scrape_web_page": None,  # re-indexing must not scrape
+    }
+    with patch.multiple(app, **fakes):
+        return list(app.reindex_saved_pages("llama3.2"))
+
+
 app.create_gradio_interface()
+
+# after a restart: saved pages are indexed again without scraping, only once
+assert "No saved page" in reindex([])[-1][1] and app.state["knowledge_base"] is None
+restart_html, restart_message = reindex([SimpleNamespace()])[-1]
+assert "(non nécessaire)" in restart_html and "Ready" in restart_message, restart_message
+assert restart_html.count("(terminé)") == 3, restart_html  # chunking, model, vector
+assert "already indexed" in reindex([SimpleNamespace()])[-1][1]
+
+# the chat is usable as soon as "vector" is done, before the other retrievers
+app.state["knowledge_base"] = None
+ready_at = []
+with patch.multiple(app, scrape_web_page=lambda url: {"title": "T", "text": "x"},
+                    load_documents=lambda: [SimpleNamespace()], embedding_model=lambda: None,
+                    create_watsonx_llm=lambda: None, KnowledgeBase=FakeKnowledgeBase):
+    for steps, _ in app.process_url("https://example.com", "llama3.2"):
+        if "bm25" in steps and app.state["knowledge_base"] is not None:
+            ready_at.append(steps.count("(terminé)"))
+assert ready_at and ready_at[0] == 4, ready_at  # scraping, chunking, model, vector
 page = {"title": "T", "text": "hello"}
 
 updates = run(page)

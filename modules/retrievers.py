@@ -1,6 +1,7 @@
 """The six LlamaIndex retrievers, built over the scraped documents and Chroma DB."""
 
 import logging
+import threading
 from functools import cached_property
 from typing import List, Optional
 
@@ -63,6 +64,7 @@ class KnowledgeBase:
         self.client = chromadb.PersistentClient(path=chroma_dir or config.CHROMA_DIR)
         self.chunks = self._splitter(config.CHUNK_SIZES[0]).get_nodes_from_documents(documents)
         self._retrievers = {}
+        self._build_lock = threading.Lock()
 
     @cached_property
     def _chunk_index(self) -> VectorStoreIndex:
@@ -74,8 +76,12 @@ class KnowledgeBase:
         if name not in RETRIEVER_NAMES:
             raise ValueError(f"Unknown retriever '{name}'. Choose from {RETRIEVER_NAMES}")
         if name not in self._retrievers:
-            logger.info("Building '%s' retriever", name)
-            self._retrievers[name] = getattr(self, f"_build_{name}")()
+            # the chat and the indexing run in separate threads: never build twice at once,
+            # because building replaces the Chroma collection
+            with self._build_lock:
+                if name not in self._retrievers:
+                    logger.info("Building '%s' retriever", name)
+                    self._retrievers[name] = getattr(self, f"_build_{name}")()
         return self._retrievers[name]
 
     @staticmethod
