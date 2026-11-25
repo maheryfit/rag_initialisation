@@ -36,7 +36,8 @@ storage/
 *.sqlite3
 *.jsonl
 *.pkl
-*.txt
+comparison_log.txt
+comparison_results.json
 llama_index_cache/
 chroma_db/
 chroma_db_eval/
