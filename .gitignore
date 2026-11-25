@@ -1,0 +1,47 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.code-workspace
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# LlamaIndex Specific
+# Exclude index files, vector stores, and cached data
+index/
+storage/
+*.db
+*.sqlite3
+*.jsonl
+*.pkl
+*.txt
+llama_index_cache/
+chroma_db/
+chroma_db_eval/
+scraped_data/
+
+# Secrets and Credentials
+credentials.json
+token.json

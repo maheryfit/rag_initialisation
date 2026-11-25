@@ -1,0 +1,380 @@
+{
+  "build_seconds": {
+    "vector": 179.9,
+    "document_summary": 166.8,
+    "bm25": 0.1,
+    "auto_merging": 401.6,
+    "recursive": 189.2
+  },
+  "questions": [
+    {
+      "question": "How tall is the Eiffel Tower?",
+      "routed_to": "bm25",
+      "retrievers": {
+        "vector": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2054,
+          "seconds": 0.16
+        },
+        "document_summary": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 61,
+          "context_tokens": 25079,
+          "seconds": 0.11
+        },
+        "bm25": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2070,
+          "seconds": 0.01
+        },
+        "auto_merging": {
+          "hit": false,
+          "right_page_share": 1.0,
+          "nodes": 11,
+          "context_tokens": 1104,
+          "seconds": 0.14
+        },
+        "recursive": {
+          "hit": false,
+          "right_page_share": 1.0,
+          "nodes": 4,
+          "context_tokens": 1614,
+          "seconds": 0.12
+        }
+      }
+    },
+    {
+      "question": "How much paint is applied to the Eiffel Tower, and how often?",
+      "routed_to": "recursive",
+      "retrievers": {
+        "vector": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2147,
+          "seconds": 0.12
+        },
+        "document_summary": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 61,
+          "context_tokens": 25079,
+          "seconds": 0.11
+        },
+        "bm25": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2172,
+          "seconds": 0.0
+        },
+        "auto_merging": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 10,
+          "context_tokens": 1221,
+          "seconds": 0.11
+        },
+        "recursive": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2183,
+          "seconds": 0.14
+        }
+      }
+    },
+    {
+      "question": "Quel architecte a contribué à la conception de la tour Eiffel ?",
+      "routed_to": "vector",
+      "retrievers": {
+        "vector": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2156,
+          "seconds": 0.13
+        },
+        "document_summary": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 61,
+          "context_tokens": 25079,
+          "seconds": 0.12
+        },
+        "bm25": {
+          "hit": false,
+          "right_page_share": 0.8,
+          "nodes": 5,
+          "context_tokens": 2157,
+          "seconds": 0.0
+        },
+        "auto_merging": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 9,
+          "context_tokens": 1235,
+          "seconds": 0.12
+        },
+        "recursive": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2096,
+          "seconds": 0.12
+        }
+      }
+    },
+    {
+      "question": "Chez les plantes, dans quelle membrane se trouvent les protéines contenant la chlorophylle ?",
+      "routed_to": "bm25",
+      "retrievers": {
+        "vector": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2069,
+          "seconds": 0.14
+        },
+        "document_summary": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 56,
+          "context_tokens": 22328,
+          "seconds": 0.14
+        },
+        "bm25": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2047,
+          "seconds": 0.0
+        },
+        "auto_merging": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 7,
+          "context_tokens": 1028,
+          "seconds": 0.13
+        },
+        "recursive": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 3,
+          "context_tokens": 1211,
+          "seconds": 0.13
+        }
+      }
+    },
+    {
+      "question": "What happens to carbon dioxide in the Calvin cycle?",
+      "routed_to": "bm25",
+      "retrievers": {
+        "vector": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 1816,
+          "seconds": 0.12
+        },
+        "document_summary": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 56,
+          "context_tokens": 22328,
+          "seconds": 0.11
+        },
+        "bm25": {
+          "hit": true,
+          "right_page_share": 0.8,
+          "nodes": 5,
+          "context_tokens": 1843,
+          "seconds": 0.0
+        },
+        "auto_merging": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 10,
+          "context_tokens": 1143,
+          "seconds": 0.11
+        },
+        "recursive": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 4,
+          "context_tokens": 1581,
+          "seconds": 0.11
+        }
+      }
+    },
+    {
+      "question": "Rubisco algues marines vitesse maximum",
+      "routed_to": "bm25",
+      "retrievers": {
+        "vector": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2109,
+          "seconds": 0.1
+        },
+        "document_summary": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 56,
+          "context_tokens": 22328,
+          "seconds": 0.11
+        },
+        "bm25": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2100,
+          "seconds": 0.0
+        },
+        "auto_merging": {
+          "hit": true,
+          "right_page_share": 0.91,
+          "nodes": 11,
+          "context_tokens": 814,
+          "seconds": 0.11
+        },
+        "recursive": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2151,
+          "seconds": 0.09
+        }
+      }
+    },
+    {
+      "question": "Comment les abeilles se communiquent-elles l'emplacement de la nourriture ?",
+      "routed_to": "bm25",
+      "retrievers": {
+        "vector": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2174,
+          "seconds": 0.13
+        },
+        "document_summary": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 59,
+          "context_tokens": 25150,
+          "seconds": 0.14
+        },
+        "bm25": {
+          "hit": false,
+          "right_page_share": 0.0,
+          "nodes": 5,
+          "context_tokens": 2110,
+          "seconds": 0.0
+        },
+        "auto_merging": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 11,
+          "context_tokens": 1048,
+          "seconds": 0.15
+        },
+        "recursive": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 4,
+          "context_tokens": 1761,
+          "seconds": 0.13
+        }
+      }
+    },
+    {
+      "question": "What is the biggest threat to honey bees in the United States?",
+      "routed_to": "bm25",
+      "retrievers": {
+        "vector": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2228,
+          "seconds": 0.11
+        },
+        "document_summary": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 59,
+          "context_tokens": 25150,
+          "seconds": 0.13
+        },
+        "bm25": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2115,
+          "seconds": 0.0
+        },
+        "auto_merging": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 10,
+          "context_tokens": 1056,
+          "seconds": 0.15
+        },
+        "recursive": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 2,
+          "context_tokens": 872,
+          "seconds": 0.13
+        }
+      }
+    },
+    {
+      "question": "Give me an overview of the article about honey bees.",
+      "routed_to": "document_summary",
+      "retrievers": {
+        "vector": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2179,
+          "seconds": 0.11
+        },
+        "document_summary": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 59,
+          "context_tokens": 25150,
+          "seconds": 0.11
+        },
+        "bm25": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 5,
+          "context_tokens": 2204,
+          "seconds": 0.0
+        },
+        "auto_merging": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 11,
+          "context_tokens": 1198,
+          "seconds": 0.12
+        },
+        "recursive": {
+          "hit": true,
+          "right_page_share": 1.0,
+          "nodes": 4,
+          "context_tokens": 1821,
+          "seconds": 0.13
+        }
+      }
+    }
+  ]
+}
