@@ -3,12 +3,15 @@
 import sys
 import logging
 import argparse
+from functools import lru_cache
 
 from modules.data_extraction import scrape_web_page
 from modules.data_processing import load_documents
+from modules.indexer import Indexer
 from modules.llm_interface import change_llm_model, create_watsonx_embedding, create_watsonx_llm
 from modules.query_engine import answer_user_query, source_urls, AUTO
-from modules.retrievers import KnowledgeBase, RETRIEVER_NAMES
+from modules.retrievers import RETRIEVER_NAMES
+import config
 
 # Set up logging
 logging.basicConfig(
@@ -47,11 +50,19 @@ def main():
     if args.url and not scrape_web_page(args.url):
         sys.exit("Nothing scraped. See the log above.")
 
-    documents = load_documents()
-    if not documents:
-        sys.exit("No scraped data. Run again with --url.")
-    knowledge_base = KnowledgeBase(documents, create_watsonx_embedding(), create_watsonx_llm())
-    chatbot_interface(knowledge_base, args.retriever)
+    indexer = Indexer(
+        config.CHROMA_DIR, load_documents,
+        lru_cache(maxsize=1)(create_watsonx_embedding), create_watsonx_llm,
+    )
+    indexer.load()
+    if args.url or indexer.knowledge_base is None:
+        indexer.request()
+        indexer.wait(None)
+    # after a failed build this is the previous version, if there is one
+    print(indexer.status()["message"])
+    if indexer.knowledge_base is None:
+        sys.exit(1)
+    chatbot_interface(indexer.knowledge_base, args.retriever)
 
 
 if __name__ == "__main__":

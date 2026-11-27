@@ -67,6 +67,29 @@ La colonne « Question visée » décrit l'usage attendu, pas un résultat garan
 `bm25` fonctionne en mémoire. Il n'utilise ni stemming ni liste de mots vides, car les deux dépendent de la langue.
 Comme il compare des mots exacts, il ne fait pas le lien entre une question en français et un texte en anglais.
 
+## Les versions de l'index
+
+Chaque construction écrit dans son propre dossier. La version active n'est jamais modifiée.
+
+```
+chroma_db/
+├── active.json     # nom de la version active et de la précédente
+├── v…/             # une version : collections Chroma, blocs, résumés et manifest.json
+└── v…/
+```
+
+- Le projet ne passe à la nouvelle version qu'après la réussite des six retrievers, en remplaçant `active.json` en
+  une seule opération. En cas d'erreur ou de fermeture de l'application, l'ancienne version reste active.
+- Les vecteurs des blocs inchangés et les résumés des pages inchangées sont réutilisés.
+- Au démarrage, la version active est chargée sans vectoriser les pages et aucune construction n'est lancée. Si des
+  pages ont changé depuis, l'interface le signale : cliquez sur **Re-embed**. En ligne de commande, `main.py`
+  construit une version avec `--url` ou s'il n'en existe aucune.
+- Les demandes reçues pendant une construction sont regroupées dans une seule construction suivante.
+- Après un changement de modèle d'embedding ou de taille de blocs, l'ancienne version n'est pas chargée tant que
+  vous n'avez pas cliqué sur **Re-embed**.
+- Les anciennes versions et les dossiers incomplets sont supprimés automatiquement. Les fichiers créés dans
+  `chroma_db/` avant ce système de versions ne sont ni réutilisés ni supprimés.
+
 ## Le routeur de requêtes
 
 En mode `auto`, `llama3.2` lit la description de chaque retriever et choisit celui qui convient à la question
@@ -84,12 +107,16 @@ choisir un retriever à la main.
 ├── compare_retrievers.py    # Comparaison des six retrievers
 ├── config.py                # Modèles, tailles de blocs, paramètres de recherche, prompt
 ├── smoke_test.py            # Test hors ligne (modèles factices)
+├── test_indexing.py         # Test hors ligne des versions et de la construction en arrière-plan
+├── test_app.py              # Test hors ligne de l'interface et du scraping sans perte
 ├── requirements.txt         # Dépendances
 └── modules/
     ├── web_spider.py        # Spider Scrapy, exécuté dans un processus séparé
     ├── data_extraction.py   # Lance le spider et enregistre le JSON
     ├── data_processing.py   # Charge les JSON et prépare Chroma
-    ├── retrievers.py        # Les six retrievers
+    ├── retrievers.py        # Les six retrievers, leur sauvegarde et leur chargement
+    ├── versions.py          # Dossiers de versions et version active
+    ├── indexer.py           # Construction en arrière-plan
     ├── router.py            # Choix du retriever
     ├── query_engine.py      # Recherche puis génération de la réponse
     └── llm_interface.py     # llama3.2 et bge-m3
@@ -131,9 +158,13 @@ python app.py
 
 Ouvrez `http://127.0.0.1:7860`.
 
-1. Dans **Process Web Page**, saisissez une URL et cliquez sur **Process Page**.
+1. Dans **Process Web Page**, saisissez une URL et cliquez sur **Process Page**. La page est enregistrée, puis
+   l'index est construit en arrière-plan ; le panneau de droite affiche la progression.
 2. Dans **Chat**, gardez le retriever sur `auto` ou choisissez-en un.
 3. Posez votre question en français ou en anglais.
+
+Le bouton **Re-embed** lance une construction de toutes les pages enregistrées, par exemple après un échec. Le chat
+reste utilisable avec l'ancienne version pendant la construction.
 
 La réponse indique le retriever utilisé et les pages sources des passages retrouvés. Pour comparer, posez la même
 question avec chacun des six retrievers.
@@ -171,6 +202,8 @@ ne permet pas de conclure qu'un retriever est toujours meilleur.
 
 ```bash
 python smoke_test.py
+python test_indexing.py
+python test_app.py
 ```
 
 Il vérifie l'extraction HTML, le filtrage des adresses locales, les six retrievers et le routeur avec des modèles
@@ -196,12 +229,10 @@ factices. Il ne mesure ni la qualité des réponses ni celle de la recherche.
   interdisent le scraping.
 - **Scraping simple** : une seule page par URL, sans suivre les liens ni exécuter JavaScript. Tout le texte visible
   est gardé, y compris les menus et les références, ce qui ajoute du bruit à la recherche.
-- **Réindexation au redémarrage** : les retrievers sont gardés en mémoire, donc perdus à l'arrêt, même si les
-  dossiers `scraped_data/` et `chroma_db/` restent. À l'ouverture de la page, l'interface web réindexe
-  automatiquement les pages enregistrées, sans nouveau scraping. Le chat est disponible dès que `vector` est
-  construit ; les autres retrievers le sont à leur première utilisation.
-- **Réindexation complète** : toutes les pages de `scraped_data/` sont indexées, et les vecteurs sont recalculés à
-  chaque traitement ou redémarrage.
+- **Première construction** : le chat attend que les six retrievers soient prêts, y compris le résumé de chaque
+  page. Un seul échec (par exemple Ollama arrêté) empêche l'activation de la nouvelle version.
+- **Construction échouée** : son travail est perdu. La suivante ne réutilise que ce que contient la version active.
+- **Espace disque** : deux versions sont conservées, plus une troisième pendant une construction.
 - **Lenteur possible** : les embeddings sur CPU et les résumés de `document_summary` prennent du temps sur de longues
   pages.
 - **Réponses à vérifier** : un petit modèle comme `llama3.2` peut se tromper, même avec le bon passage.

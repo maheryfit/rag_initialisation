@@ -6,6 +6,8 @@ This package contains the following modules:
 - web_spider: Scrapy spider (run in a separate process)
 - data_processing: Loading the JSON files and preparing Chroma DB
 - retrievers: The six LlamaIndex retrievers
+- versions: Index version folders and the pointer to the active one
+- indexer: Background builds that switch version only after full success
 - router: LLM query router that picks a retriever
 - llm_interface: Functions for interfacing with local Ollama LLMs and HuggingFace embeddings
 - query_engine: Functions for answering questions

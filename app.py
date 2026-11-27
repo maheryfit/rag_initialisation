@@ -2,16 +2,16 @@
 
 import html
 import sys
-import time
 import logging
 from functools import lru_cache
 import gradio as gr
 
 from modules.data_extraction import scrape_web_page, output_path
 from modules.data_processing import load_documents
+from modules.indexer import Indexer
 from modules.llm_interface import change_llm_model, create_watsonx_embedding, create_watsonx_llm
 from modules.query_engine import answer_user_query, source_urls, AUTO
-from modules.retrievers import KnowledgeBase, RETRIEVER_NAMES
+from modules.retrievers import RETRIEVER_NAMES
 import config
 
 # Set up logging
@@ -25,23 +25,23 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# ponytail: one knowledge base shared by every browser tab (single local user).
-# Key it by session, with separate Chroma collections, if several people use the app.
-state = {"knowledge_base": None}
-
 embedding_model = lru_cache(maxsize=1)(create_watsonx_embedding)
 
+# ponytail: one index shared by every browser tab (single local user, one app process).
+# Use one root folder per user if several people use the app.
+indexer = Indexer(config.CHROMA_DIR, load_documents, embedding_model, create_watsonx_llm)
 
+# labels of modules.indexer.STEP_NAMES
 STEPS = {
-    "scraping": "Scraping de la page et enregistrement en JSON",
-    "chunking": "Chargement des JSON et découpage en blocs",
-    "model": "Chargement du modèle d'embedding",
+    "chunking": "Chargement des pages enregistrées (JSON)",
+    "model": "Modèle d'embedding et découpage en blocs",
     "vector": "Embedding dans Chroma DB et index « vector »",
     "bm25": "Indexation « bm25 » (mots-clés, sans embedding)",
     "hybrid": "Retriever « hybrid » (fusion des scores vector et bm25)",
     "auto_merging": "Indexation « auto_merging » (Chroma DB)",
     "recursive": "Indexation « recursive » (Chroma DB)",
     "document_summary": "Indexation « document_summary » (résumés llama3.2 + Chroma DB)",
+    "activate": "Activation de la nouvelle version",
 }
 
 # status -> (icon, French label, colour)
@@ -50,138 +50,77 @@ STATUSES = {
     "running": ("⏳", "en cours", "#d97706"),
     "done": ("✅", "terminé", "#16a34a"),
     "failed": ("❌", "échec", "#dc2626"),
-    "skipped": ("⏭️", "à la première utilisation", "#6b7280"),
-    "reused": ("⏭️", "non nécessaire", "#6b7280"),
 }
 
 
-def render_steps(progress):
-    """HTML list of the pipeline steps. ``progress`` maps a step to (status, detail)."""
+def render_status(status):
+    """(HTML of the build steps, status message) for the dict given by ``Indexer.status``."""
+    version = html.escape(status["version"] or "aucune")
+    lines = [f"<p><strong>Version active :</strong> {version}</p>"]
+    if status["queued"]:
+        lines.append("<p>Une demande est en attente d'une autre construction.</p>")
+    if not status["progress"]:
+        lines.append("<p>Aucune construction depuis le démarrage.</p>")
+        return _panel(lines), status["message"]
+
     items = []
     for key, label in STEPS.items():
-        status, detail = progress.get(key, ("pending", ""))
-        icon, status_label, colour = STATUSES[status]
+        state, detail = status["progress"].get(key, ("pending", ""))
+        icon, state_label, colour = STATUSES[state]
         # details can contain scraped URLs or error text, so they are escaped
         detail_html = f"<br><small>{html.escape(str(detail))}</small>" if detail else ""
         items.append(
             f'<li style="margin:6px 0;padding:8px 12px;border-left:4px solid {colour}">'
             f'<span aria-hidden="true">{icon}</span> <strong>{html.escape(label)}</strong> '
-            f'<span style="color:{colour}">({status_label})</span>{detail_html}</li>'
+            f'<span style="color:{colour}">({state_label})</span>{detail_html}</li>'
         )
-    return (
-        '<div aria-live="polite"><h3>Étapes du pipeline</h3>'
-        f'<ol style="list-style:none;padding:0">{"".join(items)}</ol></div>'
-    )
+    lines.append(f'<ol style="list-style:none;padding:0">{"".join(items)}</ol>')
+    return _panel(lines), status["message"]
 
 
-def process_url(url, selected_model, build_all=True):
-    """Scrape a web page, save it as JSON, and index all saved pages.
+def _panel(lines):
+    return f'<div aria-live="polite"><h3>Construction de l’index</h3>{"".join(lines)}</div>'
 
-    Args:
-        url: Web page URL to scrape.
-        selected_model: LLM model to use.
-        build_all: Build all retrievers now instead of on first use.
+
+def current_status():
+    return render_status(indexer.status())
+
+
+def load_index():
+    """Load the saved index when the page opens. Never builds."""
+    indexer.load()
+
+
+def reembed(selected_model):
+    """Ask for a new version of the index, built in the background."""
+    change_llm_model(selected_model)
+    indexer.request()
+    return "⏳ Build requested. The current index stays available."
+
+
+def process_url(url, selected_model):
+    """Scrape a web page, save it as JSON, then ask for a new index version.
 
     Yields:
-        (steps HTML, status message) each time a step starts or ends.
+        Messages about the scraping. The build progress comes from ``current_status``.
     """
     url = (url or "").strip()
     if not url:
-        yield render_steps({}), "⚠️ Please enter a web page URL."
+        yield "⚠️ Please enter a web page URL."
         return
-    yield from run_pipeline(url, selected_model, build_all)
-
-
-def reindex_saved_pages(selected_model):
-    """Re-index the saved JSON pages when the app is opened after a (re)start.
-
-    Retrievers live in memory, so they are lost when the app stops. Only "vector" is
-    built here to keep the start short; the others are built on first use.
-
-    Yields:
-        (steps HTML, status message), like process_url.
-    """
-    if state["knowledge_base"] is not None:  # another tab or a page reload
-        yield render_steps({}), "✅ Pages already indexed. Go to the Chat tab."
-    elif not load_documents():
-        yield render_steps({}), "No saved page yet. Enter a URL to start."
-    else:
-        yield from run_pipeline(None, selected_model, build_all=False)
-
-
-def run_pipeline(url, selected_model, build_all):
-    """Index the saved pages, after scraping ``url`` first unless it is None."""
-    progress = {}
-    current, started = None, 0.0
-
-    def start(key):
-        nonlocal current, started
-        current, started = key, time.perf_counter()
-        progress[key] = ("running", "")
-        return render_steps(progress), f"⏳ {STEPS[key]}..."
-
-    def done(detail=""):
-        elapsed = f"{time.perf_counter() - started:.1f} s"
-        progress[current] = ("done", f"{detail} ({elapsed})" if detail else elapsed)
-
-    data = None
-    try:
-        if url is None:
-            progress["scraping"] = ("reused", "Réindexation des pages déjà enregistrées en JSON")
-        else:
-            yield start("scraping")
-            data = scrape_web_page(url)
-            if not data:
-                progress[current] = ("failed", "Aucune donnée récupérée")
-                yield render_steps(progress), (
-                    "❌ Nothing scraped. The URL may be invalid or not public, the site's robots.txt "
-                    "may disallow crawling (LinkedIn does), or the request failed. See the terminal log."
-                )
-                return
-            done(f"{len(data['text'])} caractères dans {output_path(url)}")
-
-        # the Chroma collections are about to be replaced, so the old retrievers are unusable
-        state["knowledge_base"] = None
-        change_llm_model(selected_model)
-
-        yield start("chunking")
-        documents = load_documents()
-        done(f"{len(documents)} page(s)")
-
-        yield start("model")
-        model = embedding_model()
-        done(config.LOCAL_EMBEDDING_MODEL_ID)
-
-        yield start("vector")
-        knowledge_base = KnowledgeBase(documents, model, create_watsonx_llm())
-        knowledge_base.retriever("vector")
-        done(f"{len(knowledge_base.chunks)} blocs dans {config.CHROMA_DIR}/")
-        # the chat can start now, while the other retrievers are still being built
-        state["knowledge_base"] = knowledge_base
-    except Exception as e:
-        logger.exception("Processing failed at step %s", current)
-        progress[current] = ("failed", e)
-        yield render_steps(progress), f"❌ Processing failed: {e}"
+    yield "⏳ Scraping..."
+    data = scrape_web_page(url)
+    if not data:
+        yield (
+            "❌ Nothing scraped. The URL may be invalid or not public, the site's robots.txt "
+            "may disallow crawling (LinkedIn does), or the request failed. See the terminal log."
+        )
         return
-
-    failed = []
-    for name in [key for key in STEPS if key in RETRIEVER_NAMES and key != "vector"]:
-        if not build_all:
-            progress[name] = ("skipped", "")
-            continue
-        yield start(name)
-        try:
-            knowledge_base.retriever(name)
-            done()
-        except Exception as e:  # the other retrievers stay usable
-            logger.exception("Building %s failed", name)
-            progress[name] = ("failed", e)
-            failed.append(name)
-
-    summary = f"⚠️ Failed retrievers: {', '.join(failed)}" if failed else "✅ Ready. Go to the Chat tab."
-    if data:
-        summary += f"\n\nTitle: {data['title']}\n\n{data['text'][:1000]}"
-    yield render_steps(progress), summary
+    reembed(selected_model)
+    yield (
+        f"✅ Saved to {output_path(url)}. Indexing runs in the background.\n\n"
+        f"Title: {data['title']}\n\n{data['text'][:1000]}"
+    )
 
 
 def plain_text(text):
@@ -207,9 +146,10 @@ def chat(user_query, retriever_name, chat_history):
     if not (user_query or "").strip():
         return chat_history, ""
 
-    knowledge_base = state["knowledge_base"]
+    # read once: a build can switch to a new version while this question is answered
+    knowledge_base = indexer.knowledge_base
     if knowledge_base is None:
-        answer = "⚠️ No index ready. Wait for the \"vector\" step to finish, or process a URL first."
+        answer = "⚠️ No index ready. Click Re-embed, or process a URL."
     else:
         try:
             response, used = answer_user_query(knowledge_base, user_query, retriever_name)
@@ -246,30 +186,26 @@ def create_gradio_interface():
                         label="Select LLM Model",
                         value=config.LLM_MODEL_ID
                     )
-                    build_all = gr.Checkbox(
-                        label="Construire les 6 retrievers maintenant (plus long)",
-                        value=True
-                    )
                     process_btn = gr.Button("Process Page")
+                    reembed_btn = gr.Button("Re-embed")
+                    result_text = gr.Textbox(label="Result", lines=10)
 
                 with gr.Column():
-                    steps_html = gr.HTML(render_steps({}))
-                    result_text = gr.Textbox(label="Result", lines=10)
+                    index_message = gr.Textbox(label="Index status", lines=3)
+                    steps_html = gr.HTML(render_status(indexer.status())[0])
 
             process_btn.click(
                 fn=process_url,
-                inputs=[url_input, model_dropdown, build_all],
-                outputs=[steps_html, result_text],
-                show_progress="hidden",  # the steps panel shows the progress
-                concurrency_id="indexing"  # one indexing at a time: they share Chroma
+                inputs=[url_input, model_dropdown],
+                outputs=[result_text],
             )
+            reembed_btn.click(fn=reembed, inputs=[model_dropdown], outputs=[result_text])
             # runs when the page opens; does nothing if an index is already in memory
-            demo.load(
-                fn=reindex_saved_pages,
-                inputs=[model_dropdown],
-                outputs=[steps_html, result_text],
+            demo.load(fn=load_index, show_progress="hidden")
+            gr.Timer(1.0).tick(
+                fn=current_status,
+                outputs=[steps_html, index_message],
                 show_progress="hidden",
-                concurrency_id="indexing"
             )
 
         with gr.Tab("Chat"):
@@ -295,8 +231,16 @@ def create_gradio_interface():
     return demo
 
 
-if __name__ == "__main__":
+def main():
+    # Load the saved index before serving the page, so the chat is ready as soon as it opens.
+    # This embeds no page and never builds. The wait is mostly the embedding model loading.
+    logger.info("Loading the saved index...")
+    indexer.load()
     demo = create_gradio_interface()
     # Local only: the scraper fetches any URL it is given, so do not expose the app
     # to the network without authentication.
     demo.launch(server_name="127.0.0.1", server_port=7860, share=False)
+
+
+if __name__ == "__main__":
+    main()

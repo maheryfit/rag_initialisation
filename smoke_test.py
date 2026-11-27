@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 from llama_index.core.embeddings import MockEmbedding
 from llama_index.core.llms import MockLLM
-from llama_index.core.schema import NodeWithScore, TextNode
+from llama_index.core.schema import Document, NodeWithScore, TextNode
 from scrapy.http import HtmlResponse
 
 from modules import data_processing, query_engine, llm_interface, router
@@ -47,6 +47,30 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
     assert {"chunks", "leaves", "children", "summaries"} <= {c.name for c in kb.client.list_collections()}
     # unparseable router output (MockLLM) must fall back instead of crashing
     assert query_engine.answer_user_query(kb, "python")[1] == router.DEFAULT_RETRIEVER
+
+# a new version reuses the previous version's vectors: only new texts are embedded
+class CountingEmbedding(MockEmbedding):
+    embedded: list = []
+
+    def _get_text_embeddings(self, texts):
+        self.embedded.extend(texts)
+        return super()._get_text_embeddings(texts)
+
+
+def page_document(topic):
+    return Document(text=f"A page about {topic}.", doc_id=topic, metadata={"url": topic},
+                    excluded_embed_metadata_keys=["url"])
+
+
+with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+    first = KnowledgeBase([page_document("python")], MockEmbedding(embed_dim=8), MockLLM(),
+                          str(Path(tmp, "v1")))
+    first.retriever("vector")
+    model = CountingEmbedding(embed_dim=8, embedded=[])
+    second = KnowledgeBase([page_document(t) for t in ("python", "music")], model, MockLLM(),
+                           str(Path(tmp, "v2")), previous_dir=str(Path(tmp, "v1")))
+    second.retriever("vector")
+    assert model.embedded == ["A page about music."], model.embedded
 
 # the router maps the selector's choice to a retriever name, and rejects bad indexes
 def selector_returning(i):
